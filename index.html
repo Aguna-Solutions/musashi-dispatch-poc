@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5f6f8" />
+  <meta name="description" content="Musashi Dispatch - transporter vehicle requests, gate verification and transporter-wise GRN generation proof of concept." />
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <title>Musashi Dispatch — POC</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <!-- =============================== LOGIN =============================== -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <aside class="login-brand-panel">
+        <img class="login-logo" src="assets/logo.svg" alt="DHL Supply Chain" />
+        <h1>Dispatch, simplified.</h1>
+        <p class="login-brand-copy">
+          One workspace for transporter vehicle requests, gate verification and transporter-wise
+          GRN generation at the Bawal plant.
+        </p>
+        <ul class="login-points">
+          <li>Carrier vehicle requests</li>
+          <li>Gate verification &amp; GRN</li>
+          <li>Billing ledger &amp; CSV export</li>
+        </ul>
+        <p class="login-plant">Bawal Plant · Gate 02 · Line A</p>
+      </aside>
+
+      <section class="login-form-panel" aria-labelledby="loginTitle">
+        <div class="login-head">
+          <span class="eyebrow">Role-based access</span>
+          <h2 id="loginTitle">Sign in</h2>
+          <p>Select an account to load its demo credentials.</p>
+        </div>
+
+        <div class="role-picker" role="group" aria-label="Choose demo account">
+          <button class="role-option" type="button" data-demo-user="stc">
+            <span class="role-option-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7h11v10H3z" />
+                <path d="M14 11h4l3 3v3h-7z" />
+                <circle cx="7" cy="18.5" r="1.6" />
+                <circle cx="17.5" cy="18.5" r="1.6" />
+              </svg>
+            </span>
+            <span class="role-option-text">
+              <strong>STC Services</strong>
+              <small>Carrier portal</small>
+            </span>
+          </button>
+
+          <button class="role-option" type="button" data-demo-user="dlv">
+            <span class="role-option-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2.5 7.5h10v9h-10z" />
+                <path d="M12.5 11h4.2l3.3 3.2v2.3h-7.5z" />
+                <circle cx="6.5" cy="18.2" r="1.5" />
+                <circle cx="16.8" cy="18.2" r="1.5" />
+              </svg>
+            </span>
+            <span class="role-option-text">
+              <strong>Delhivery</strong>
+              <small>Carrier portal</small>
+            </span>
+          </button>
+
+          <button class="role-option" type="button" data-demo-user="dispatch">
+            <span class="role-option-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5z" />
+                <path d="M4 8.5 12 13l8-4.5M12 13v7" />
+              </svg>
+            </span>
+            <span class="role-option-text">
+              <strong>Dispatch</strong>
+              <small>Gate verification</small>
+            </span>
+          </button>
+
+          <button class="role-option" type="button" data-demo-user="admin">
+            <span class="role-option-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3.5" y="3.5" width="7" height="7" rx="1.2" />
+                <rect x="13.5" y="3.5" width="7" height="7" rx="1.2" />
+                <rect x="3.5" y="13.5" width="7" height="7" rx="1.2" />
+                <rect x="13.5" y="13.5" width="7" height="7" rx="1.2" />
+              </svg>
+            </span>
+            <span class="role-option-text">
+              <strong>Admin</strong>
+              <small>Billing ledger</small>
+            </span>
+          </button>
+        </div>
+
+        <form class="login-form" id="loginForm" novalidate autocomplete="off">
+          <label class="field" for="loginUser">
+            <span>Username</span>
+            <input class="input" id="loginUser" name="username" type="text" maxlength="40" autocomplete="username" spellcheck="false" required />
+          </label>
+
+          <label class="field" for="loginPass">
+            <span>Password</span>
+            <input class="input" id="loginPass" name="password" type="password" maxlength="40" autocomplete="current-password" required />
+          </label>
+
+          <p class="login-error" id="loginError" role="alert" hidden></p>
+
+          <button class="btn btn-primary btn-block" type="submit" id="loginSubmit">Sign in</button>
+        </form>
+
+        <p class="login-hint">Demo password for all accounts: <code>demo1234</code></p>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============================== APP SHELL ============================== -->
+  <div class="app-shell" id="appShell" hidden>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand" aria-label="Musashi Dispatch">
+        <img class="brand-logo" src="assets/logo.svg" alt="DHL Supply Chain" />
+        <span class="brand-product">
+          <strong>Musashi Dispatch</strong>
+          <span>Bawal Plant · POC v1.0</span>
+        </span>
+      </div>
+
+      <div class="sidebar-label">Workspace</div>
+
+      <nav class="nav" aria-label="Primary navigation">
+        <button class="nav-item is-active" type="button" data-view="transporter" aria-current="page">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7h11v10H3z" />
+              <path d="M14 11h4l3 3v3h-7z" />
+              <circle cx="7" cy="18.5" r="1.6" />
+              <circle cx="17.5" cy="18.5" r="1.6" />
+            </svg>
+          </span>
+          <span class="nav-text">Transporter Portal</span>
+        </button>
+
+        <button class="nav-item" type="button" data-view="dispatch">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5z" />
+              <path d="M4 8.5 12 13l8-4.5M12 13v7" />
+            </svg>
+          </span>
+          <span class="nav-text">Musashi Dispatch</span>
+          <span class="nav-badge" id="navGateBadge" hidden>0</span>
+        </button>
+
+        <button class="nav-item" type="button" data-view="admin">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3.5" y="3.5" width="7" height="7" rx="1.2" />
+              <rect x="13.5" y="3.5" width="7" height="7" rx="1.2" />
+              <rect x="3.5" y="13.5" width="7" height="7" rx="1.2" />
+              <rect x="13.5" y="13.5" width="7" height="7" rx="1.2" />
+            </svg>
+          </span>
+          <span class="nav-text">Admin Dashboard</span>
+          <span class="nav-badge" id="navAdminBadge" hidden>0</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-card">
+          <span class="avatar" id="userAvatar">—</span>
+          <span class="user-card-copy">
+            <strong id="userName">—</strong>
+            <small id="userRole">—</small>
+          </span>
+          <button class="icon-btn" type="button" id="logoutBtn" aria-label="Sign out" title="Sign out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 17l5-5-5-5" />
+              <path d="M20 12H9" />
+              <path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6" />
+            </svg>
+          </button>
+        </div>
+        <p class="sidebar-note">Demo POC · data stays in this browser.</p>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="topbar-eyebrow">Operations</span>
+          <h1 class="topbar-title" id="viewCrumb">Transporter Portal</h1>
+        </div>
+        <div class="topbar-right">
+          <span class="plant-chip">Bawal Plant · Gate 02</span>
+          <time class="clock" id="liveClock">--</time>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- ============================ TRANSPORTER ============================ -->
+        <section class="view is-active" id="view-transporter" aria-labelledby="transporterTitle">
+          <div class="page-head">
+            <div class="page-head-copy">
+              <span class="eyebrow">Vehicle request</span>
+              <h1 id="transporterTitle">Send a vehicle to dispatch</h1>
+              <p class="page-lede">
+                Add the truck and driver, then send the request to Musashi Dispatch. Dispatch
+                verifies the vehicle at Gate 02 and captures the destination, driver DL, bins
+                and invoice.
+              </p>
+            </div>
+            <div class="page-aside">
+              <div class="stat-tile">
+                <span>At the gate</span>
+                <strong id="transporterWaitingCount">0</strong>
+                <small>vehicles waiting</small>
+              </div>
+              <div class="stat-tile">
+                <span>GRNs issued</span>
+                <strong id="transporterGrnCount">0</strong>
+                <small>completed trips</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid transporter-grid">
+            <!-- Vehicle request form -->
+            <section class="panel form-panel" aria-labelledby="nominationTitle">
+              <div class="panel-head">
+                <div>
+                  <h2 id="nominationTitle">Vehicle and driver</h2>
+                  <p>Sent under your transporter account. Fields marked with * are required.</p>
+                </div>
+                <span class="panel-tag">Gate 02</span>
+              </div>
+
+              <form id="nominateForm" class="form-body" novalidate autocomplete="off">
+                <div class="form-grid">
+                  <label class="field" for="vehicleNo">
+                    <span>Vehicle number <em>*</em></span>
+                    <input
+                      class="input mono"
+                      id="vehicleNo"
+                      name="vehicleNo"
+                      type="text"
+                      maxlength="12"
+                      placeholder="HR47F5782"
+                      spellcheck="false"
+                      required
+                    />
+                    <small class="field-hint">Indian plate format · duplicates are blocked.</small>
+                    <small class="field-error" aria-live="polite"></small>
+                  </label>
+
+                  <label class="field" for="driverName">
+                    <span>Driver name <em>*</em></span>
+                    <input
+                      class="input"
+                      id="driverName"
+                      name="driverName"
+                      type="text"
+                      maxlength="60"
+                      placeholder="e.g. Ramesh Kumar"
+                      autocomplete="off"
+                      required
+                    />
+                    <small class="field-hint">Dispatch verifies this against the driving licence at the gate.</small>
+                    <small class="field-error" aria-live="polite"></small>
+                  </label>
+                </div>
+
+                <div class="form-note">
+                  <span class="note-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 11v5M12 8h.01" />
+                    </svg>
+                  </span>
+                  <p>
+                    This is a <strong>vehicle request</strong>, not a GRN. Musashi Dispatch adds
+                    the destination customer, driver DL, bins and invoice when the truck arrives.
+                  </p>
+                </div>
+
+                <div class="form-actions">
+                  <span class="form-required"><em>*</em> Required fields</span>
+                  <button class="btn btn-primary" type="submit">
+                    Send to dispatch
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Gate queue -->
+            <aside class="panel live-panel" aria-labelledby="gateQueueTitle">
+              <div class="panel-head">
+                <div>
+                  <h2 id="gateQueueTitle">At the gate</h2>
+                  <p>Vehicles sent by your company.</p>
+                </div>
+                <span class="count-pill" id="queueCountPill">0 waiting</span>
+              </div>
+
+              <div class="queue-list" id="transporterQueue" aria-live="polite"></div>
+
+              <div class="queue-insights">
+                <div class="queue-stat-grid">
+                  <div class="queue-stat">
+                    <span>Sent today</span>
+                    <strong id="queueSentToday">0</strong>
+                  </div>
+                  <div class="queue-stat">
+                    <span>Longest wait</span>
+                    <strong id="queueLongestWait">—</strong>
+                  </div>
+                  <div class="queue-stat">
+                    <span>Queue status</span>
+                    <strong id="queueHealth" data-state="smooth">Smooth</strong>
+                  </div>
+                  <div class="queue-stat">
+                    <span>Next GRN</span>
+                    <strong class="mono" id="queueNextGrn">—</strong>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <section class="panel transporter-trips" aria-labelledby="myTripsTitle">
+            <div class="panel-head">
+              <div>
+                <h2 id="myTripsTitle">Your completed trips</h2>
+                <p>GRNs issued for your vehicles.</p>
+              </div>
+              <span class="count-pill" id="transporterTripsCount">0 trips</span>
+            </div>
+            <div class="recent-list" id="transporterTrips"></div>
+          </section>
+        </section>
+
+        <!-- ============================== DISPATCH ============================== -->
+        <section class="view" id="view-dispatch" aria-labelledby="dispatchTitle" aria-hidden="true">
+          <div class="page-head">
+            <div class="page-head-copy">
+              <span class="eyebrow">Gate &amp; loading operations</span>
+              <h1 id="dispatchTitle">Verify the vehicle, issue the GRN</h1>
+              <p class="page-lede">
+                Check the vehicle and driver, then record the destination customer, driver DL,
+                bins loaded and external invoice. Generating the GRN completes the trip.
+              </p>
+            </div>
+            <div class="page-aside">
+              <div class="stat-tile">
+                <span>Waiting now</span>
+                <strong id="dispatchWaitingCount">0</strong>
+                <small>vehicles in queue</small>
+              </div>
+              <div class="stat-tile">
+                <span>Dispatched today</span>
+                <strong id="dispatchTodayCount">0</strong>
+                <small>completed trips</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="dispatch-layout">
+            <div class="dispatch-main">
+              <div class="section-head">
+                <div>
+                  <h2>Waiting vehicles</h2>
+                  <p>Oldest vehicle requests appear first.</p>
+                </div>
+                <span class="count-pill" id="waitingCountLabel">0 waiting</span>
+              </div>
+
+              <div class="waiting-grid" id="waitingGrid" aria-live="polite"></div>
+            </div>
+
+            <aside class="dispatch-rail">
+              <section class="panel success-panel" id="lastDispatchPanel" hidden>
+                <div class="success-head">
+                  <span class="success-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="m5 12.5 4.5 4.5L19 7" />
+                    </svg>
+                  </span>
+                  <div>
+                    <h3>Last dispatch</h3>
+                    <span>GRN issued</span>
+                  </div>
+                </div>
+                <div class="success-grn mono" id="lastGrn">—</div>
+                <p class="success-meta" id="lastGrnMeta">—</p>
+              </section>
+
+              <section class="panel" aria-labelledby="recentGrnTitle">
+                <div class="panel-head">
+                  <div>
+                    <h2 id="recentGrnTitle">Recent GRNs</h2>
+                    <p>Latest completed trips.</p>
+                  </div>
+                </div>
+                <div class="recent-list" id="recentGrnList"></div>
+              </section>
+
+              <section class="panel rule-panel" aria-labelledby="ruleTitle">
+                <h2 id="ruleTitle">One transporter. One sequence.</h2>
+                <div class="formula" aria-hidden="true">
+                  <span>CARRIER</span><b>—</b><span>SEQ + 1</span>
+                </div>
+                <p>
+                  Every completed trip increments that transporter's own counter. Numbers never
+                  repeat, so carrier billing stays unambiguous.
+                </p>
+                <div class="rule-next">
+                  <span>Next number in queue</span>
+                  <strong class="mono" id="ruleNextGrn">—</strong>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <!-- =============================== ADMIN =============================== -->
+        <section class="view" id="view-admin" aria-labelledby="adminTitle" aria-hidden="true">
+          <div class="page-head">
+            <div class="page-head-copy">
+              <span class="eyebrow">Billing &amp; reconciliation</span>
+              <h1 id="adminTitle">Completed dispatches</h1>
+              <p class="page-lede">
+                One live ledger for completed trips, auto-generated transporter-wise GRNs and
+                billing records that are ready to export.
+              </p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-ghost" type="button" id="exportBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14" />
+                </svg>
+                Export CSV
+              </button>
+              <button class="btn btn-danger-ghost" type="button" id="resetBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 5v5h5" />
+                  <path d="M5.8 15.5a7 7 0 1 0 .9-8.2L4 10" />
+                </svg>
+                Reset demo
+              </button>
+            </div>
+          </div>
+
+          <div class="metrics-grid">
+            <article class="metric-card">
+              <span class="metric-label">Completed dispatches</span>
+              <strong class="metric-value" id="metricCompleted">0</strong>
+              <span class="metric-foot">Closed &amp; GRN issued</span>
+            </article>
+
+            <article class="metric-card">
+              <span class="metric-label">Bins transported</span>
+              <strong class="metric-value" id="metricBins">0</strong>
+              <span class="metric-foot">Across all customers</span>
+            </article>
+
+            <article class="metric-card">
+              <span class="metric-label">Active at gate</span>
+              <strong class="metric-value" id="metricActive">0</strong>
+              <span class="metric-foot">Awaiting gate verification</span>
+            </article>
+
+            <article class="metric-card">
+              <span class="metric-label">Avg. bins / trip</span>
+              <strong class="metric-value" id="metricAvgBins">0</strong>
+              <span class="metric-foot">Load efficiency</span>
+            </article>
+
+            <article class="metric-card">
+              <span class="metric-label">Dispatched today</span>
+              <strong class="metric-value" id="metricToday">0</strong>
+              <span class="metric-foot">Trips closed today</span>
+            </article>
+
+            <article class="metric-card">
+              <span class="metric-label">Transporters</span>
+              <strong class="metric-value" id="metricTransporters">0</strong>
+              <span class="metric-foot">Carriers in the ledger</span>
+            </article>
+          </div>
+
+          <section class="panel table-panel" aria-labelledby="ledgerTitle">
+            <div class="panel-head table-head">
+              <div>
+                <h2 id="ledgerTitle">Reconciliation ledger</h2>
+                <p>Every completed trip with its generated GRN.</p>
+              </div>
+              <span class="count-pill" id="ledgerCountPill">0 trips</span>
+            </div>
+
+            <div class="table-toolbar">
+              <label class="search-field" for="adminSearch">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5" />
+                  <path d="m16 16 4 4" />
+                </svg>
+                <input id="adminSearch" type="search" placeholder="Search GRN, vehicle, invoice…" autocomplete="off" />
+              </label>
+
+              <div class="select-wrap toolbar-select">
+                <label class="sr-only" for="filterCustomer">Filter by customer</label>
+                <select class="input select" id="filterCustomer">
+                  <option value="">All customers</option>
+                </select>
+              </div>
+
+              <div class="select-wrap toolbar-select">
+                <label class="sr-only" for="filterTransporter">Filter by transporter</label>
+                <select class="input select" id="filterTransporter">
+                  <option value="">All transporters</option>
+                </select>
+              </div>
+
+              <button class="link-btn toolbar-clear" type="button" id="clearFiltersBtn">Clear</button>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Date</th>
+                    <th scope="col">Trip</th>
+                    <th scope="col">Transporter</th>
+                    <th scope="col">Vehicle no.</th>
+                    <th scope="col">Driver</th>
+                    <th scope="col">Destination</th>
+                    <th scope="col">Invoice no.</th>
+                    <th scope="col" class="num">Bins</th>
+                    <th scope="col">GRN number</th>
+                    <th scope="col">Completed</th>
+                  </tr>
+                </thead>
+                <tbody id="completedBody"></tbody>
+              </table>
+            </div>
+
+            <div class="table-foot">
+              <span id="tableCount">Showing 0 of 0 trips</span>
+              <span class="table-foot-note">Auto-updated from gate operations</span>
+            </div>
+          </section>
+
+          <div class="admin-lower-grid">
+            <section class="panel ledger-panel" aria-labelledby="sequenceTitle">
+              <div class="panel-head">
+                <div>
+                  <h2 id="sequenceTitle">Transporter GRN sequence</h2>
+                  <p>Locked carrier counters and next GRN.</p>
+                </div>
+                <span class="panel-tag">Locked</span>
+              </div>
+              <div class="sequence-list" id="customerLedger"></div>
+            </section>
+
+            <section class="panel activity-panel" aria-labelledby="activityTitle">
+              <div class="panel-head">
+                <div>
+                  <h2 id="activityTitle">Recent activity</h2>
+                  <p>Vehicle requests and GRN generation.</p>
+                </div>
+              </div>
+              <div class="activity-list" id="activityList"></div>
+            </section>
+          </div>
+        </section>
+      </div>
+
+      <footer class="app-footer">
+        <span>Musashi Dispatch · POC v1.0</span>
+        <span>Bawal Plant, Haryana · Data stays in this browser</span>
+      </footer>
+    </main>
+  </div>
+
+  <!-- ============================== DISPATCH MODAL ============================== -->
+  <div class="modal-backdrop" id="dispatchModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalDesc">
+      <button class="icon-btn modal-close" type="button" id="modalClose" aria-label="Close dispatch dialog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+
+      <div class="modal-head">
+        <span class="eyebrow">Gate verification</span>
+        <h2 id="modalTitle">Verify vehicle &amp; issue GRN</h2>
+        <p id="modalDesc">Confirm the driver, capture the load and link the external tax invoice.</p>
+      </div>
+
+      <div class="modal-summary">
+        <div class="summary-cell">
+          <span>Vehicle / driver</span>
+          <strong id="modalVehicle">—</strong>
+        </div>
+        <div class="summary-cell">
+          <span>Transporter</span>
+          <strong id="modalTransporter">—</strong>
+        </div>
+        <div class="summary-cell">
+          <span>Driver licence</span>
+          <strong class="mono" id="modalDriver">Verify at gate</strong>
+        </div>
+        <div class="summary-cell summary-cell--grn">
+          <span>GRN to be issued</span>
+          <strong class="mono" id="modalGrnPreview">—</strong>
+          <small id="modalSequenceNote">Sequence —</small>
+        </div>
+      </div>
+
+      <form id="dispatchForm" class="modal-form" novalidate autocomplete="off">
+        <input type="hidden" id="modalDispatchId" value="" />
+
+        <div class="form-grid">
+          <label class="field field--full" for="dispatchCustomer">
+            <span>Destination customer <em>*</em></span>
+            <div class="select-wrap">
+              <select class="input select" id="dispatchCustomer" name="dispatchCustomer" required>
+                <option value="">Select destination customer</option>
+              </select>
+            </div>
+            <small class="field-hint">Captured by dispatch at the gate.</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
+          <label class="field" for="dispatchDriverId">
+            <span>Driver DL / ID <em>*</em></span>
+            <input
+              class="input mono"
+              id="dispatchDriverId"
+              name="dispatchDriverId"
+              type="text"
+              maxlength="24"
+              placeholder="DL-HR-2019-4417"
+              spellcheck="false"
+              required
+            />
+            <small class="field-hint">Verified against the original licence.</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
+          <label class="field" for="binsLoaded">
+            <span>Total bins loaded <em>*</em></span>
+            <input
+              class="input mono"
+              id="binsLoaded"
+              name="binsLoaded"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="2000"
+              step="1"
+              placeholder="e.g. 240"
+              required
+            />
+            <small class="field-hint">Counted against the bin-out slip.</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
+          <label class="field field--full" for="invoiceNo">
+            <span>External tax invoice no. <em>*</em></span>
+            <input
+              class="input mono"
+              id="invoiceNo"
+              name="invoiceNo"
+              type="text"
+              maxlength="30"
+              placeholder="8261110404"
+              spellcheck="false"
+              required
+            />
+            <small class="field-hint">From Musashi's tax-invoice system.</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+        </div>
+
+        <div class="form-note">
+          <span class="note-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v18M5 8h14M5 16h14" />
+            </svg>
+          </span>
+          <p>
+            Generating the GRN is final: the trip moves to the admin ledger and the transporter's
+            sequence advances permanently.
+          </p>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="cancelDispatchBtn">Cancel</button>
+          <button class="btn btn-primary" type="submit">
+            Generate GRN &amp; dispatch
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m5 12.5 4.5 4.5L19 7" />
+            </svg>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
