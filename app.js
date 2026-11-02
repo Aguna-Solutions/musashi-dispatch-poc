@@ -13,7 +13,7 @@
 
 /* ------------------------------- Configuration ------------------------------ */
 const STORAGE_KEY = "musashi-dispatch-poc-v1";
-const STORAGE_VERSION = 3;
+const STORAGE_VERSION = 5;
 const MAX_ACTIVITY = 30;
 
 /* ------------------------------ Access control ------------------------------ */
@@ -58,19 +58,21 @@ const ACCOUNTS = [
 
 const ROLE_ACCESS = {
   transporter: ["transporter"],
-  dispatch: ["dispatch"],
-  admin: ["admin"],
+  dispatch: ["dispatch", "returns"],
+  admin: ["admin", "returns", "dispatch"],
 };
 
 const CUSTOMERS_SEED = [
-  { id: 1, name: "Maruti Suzuki", code: "MSIL", city: "Manesar, Haryana" },
-  { id: 2, name: "Hero Honda", code: "HH", city: "Gurugram, Haryana" },
-  { id: 3, name: "FCC Clutch India", code: "FCC", city: "Tapukara, Rajasthan" },
+  { id: 1, name: "Hero Honda", code: "HH", city: "Gurgaon, Haryana", fixedKm: 90 },
+  { id: 2, name: "Maruti Suzuki", code: "MSIL", city: "Manesar, Haryana", fixedKm: 45 },
+  { id: 3, name: "FCC Clutch India", code: "FCC", city: "Tapukara, Rajasthan", fixedKm: 70 },
+  { id: 4, name: "Tata Motors", code: "TML", city: "Sanand, Gujarat", fixedKm: null },
+  { id: 5, name: "JCB India", code: "JCB", city: "Vadodara, Gujarat", fixedKm: null },
 ];
 
 const TRANSPORTERS_SEED = [
   { id: 1, name: "STC Services", code: "STC", currentSequence: 24 },
-  { id: 2, name: "Delhivery Freight", code: "DLV", currentSequence: 18 },
+  { id: 2, name: "Delhivery Freight", code: "DLV", currentSequence: 19 },
 ];
 
 const COMPLETED_SEED = [
@@ -201,6 +203,36 @@ const COMPLETED_SEED = [
     completedAt: "2026-10-15T15:50:00+05:30",
   },
 ];
+
+/* Delivered-bin counts for the completed samples (returned = loaded - delivered) */
+const COMPLETED_DELIVERED_SEED = {
+  "STC-0021": 220,
+  "STC-0024": 160,
+  "DLV-0018": 300,
+  "STC-0020": 250,
+  "DLV-0017": 340,
+  "STC-0023": 150,
+  "DLV-0015": 190,
+  "STC-0022": 285,
+  "DLV-0016": 330,
+};
+
+/* A truck that already left the plant and is waiting to come back for verification */
+const IN_TRANSIT_SEED = {
+  dispatchId: "D-0999",
+  transporterName: "Delhivery Freight",
+  vehicleNo: "HR26AB7788",
+  driverName: "Sanjay Patel",
+  driverId: "DL-GJ-2019-4471",
+  customer: "Tata Motors",
+  status: "In Transit",
+  binsLoaded: 100,
+  binsDelivered: 80,
+  invoiceNo: "8261110410",
+  grnNumber: "DLV-0019",
+  date: "2026-11-02",
+  completedAt: null,
+};
 
 /* --------------------------------- Utilities -------------------------------- */
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -342,12 +374,58 @@ function seedState() {
     },
   ];
 
+  const completedSeed = COMPLETED_SEED.map((dispatch) => {
+    const customer = CUSTOMERS_SEED.find((item) => item.name === dispatch.customer);
+    const delivered = COMPLETED_DELIVERED_SEED[dispatch.grnNumber] ?? dispatch.binsLoaded;
+    const returned = Math.max(0, dispatch.binsLoaded - delivered);
+    const completedAt = dispatch.completedAt;
+
+    return {
+      ...dispatch,
+      location: customer?.city ?? "",
+      fixedKm: customer?.fixedKm ?? null,
+      kilometers: dispatch.kilometers ?? customer?.fixedKm ?? 0,
+      binsDelivered: delivered,
+      binsReturned: returned,
+      returnedBins: returned,
+      returnCondition: "Empty",
+      returnNotes: "",
+      status: "Completed",
+      dispatchedAt: dispatch.dispatchedAt ?? completedAt,
+      returnedAt: dispatch.returnedAt ?? completedAt,
+      returnVerifiedAt: dispatch.returnVerifiedAt ?? completedAt,
+    };
+  });
+
+  const transitCustomer = CUSTOMERS_SEED.find((item) => item.name === IN_TRANSIT_SEED.customer);
+  const inTransitSeed = {
+    ...IN_TRANSIT_SEED,
+    driverId: IN_TRANSIT_SEED.driverId,
+    location: transitCustomer?.city ?? "",
+    fixedKm: transitCustomer?.fixedKm ?? null,
+    kilometers: 895,
+    binsReturned: IN_TRANSIT_SEED.binsLoaded - IN_TRANSIT_SEED.binsDelivered,
+    returnCondition: null,
+    returnNotes: "",
+    dispatchedAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+    returnedAt: null,
+    returnVerifiedAt: null,
+    date: today,
+  };
+
   const dispatches = [
-    ...COMPLETED_SEED.map((dispatch) => ({ ...dispatch })),
+    ...completedSeed,
+    inTransitSeed,
     ...waitingSeeds,
   ];
 
   const activity = [
+    {
+      id: makeId(),
+      type: "grn",
+      message: "GRN DLV-0019 issued · 80 delivered / 20 returning · Tata Motors, 895 km.",
+      at: inTransitSeed.dispatchedAt,
+    },
     ...waitingSeeds.map((dispatch) => ({
       id: makeId(),
       type: "nominate",
@@ -414,6 +492,11 @@ let lastFocusedElement = null;
 let modalCloseTimer = null;
 let modalSession = 0;
 
+let activeReturnId = null;
+let returnLastFocused = null;
+let returnCloseTimer = null;
+let returnSession = 0;
+
 const adminFilters = {
   search: "",
   customer: "",
@@ -456,6 +539,7 @@ const dom = {
   viewCrumb: $("#viewCrumb"),
   clock: $("#liveClock"),
   navGateBadge: $("#navGateBadge"),
+  navReturnsBadge: $("#navReturnsBadge"),
   navAdminBadge: $("#navAdminBadge"),
 
   transporterForm: $("#nominateForm"),
@@ -484,9 +568,9 @@ const dom = {
 
   metricCompleted: $("#metricCompleted"),
   metricBins: $("#metricBins"),
+  metricTransit: $("#metricTransit"),
   metricActive: $("#metricActive"),
   metricAvgBins: $("#metricAvgBins"),
-  metricToday: $("#metricToday"),
   metricTransporters: $("#metricTransporters"),
   adminSearch: $("#adminSearch"),
   filterCustomer: $("#filterCustomer"),
@@ -496,6 +580,13 @@ const dom = {
   tableCount: $("#tableCount"),
   customerLedger: $("#customerLedger"),
   activityList: $("#activityList"),
+
+  returnsInTransitCount: $("#returnsInTransitCount"),
+  returnsTodayCount: $("#returnsTodayCount"),
+  returnsCountLabel: $("#returnsCountLabel"),
+  returnsGrid: $("#returnsGrid"),
+  returnsRecentList: $("#returnsRecentList"),
+  returnsRecentCount: $("#returnsRecentCount"),
 
   modalBackdrop: $("#dispatchModal"),
   modal: $("#dispatchModal .modal"),
@@ -508,10 +599,37 @@ const dom = {
   modalSequenceNote: $("#modalSequenceNote"),
   dispatchForm: $("#dispatchForm"),
   dispatchCustomer: $("#dispatchCustomer"),
+  dispatchLocation: $("#dispatchLocation"),
+  dispatchKm: $("#dispatchKm"),
+  dispatchKmHint: $("#dispatchKmHint"),
   dispatchDriverId: $("#dispatchDriverId"),
   binsLoaded: $("#binsLoaded"),
+  binsDelivered: $("#binsDelivered"),
+  binsReturned: $("#binsReturned"),
+  binSplitHint: $("#binSplitHint"),
   invoiceNo: $("#invoiceNo"),
   cancelDispatchBtn: $("#cancelDispatchBtn"),
+
+  returnModal: $("#returnModal"),
+  returnModalEl: $("#returnModal .modal"),
+  returnModalClose: $("#returnModalClose"),
+  returnForm: $("#returnForm"),
+  returnDispatchId: $("#returnDispatchId"),
+  returnVehicle: $("#returnVehicle"),
+  returnTransporter: $("#returnTransporter"),
+  returnGrn: $("#returnGrn"),
+  returnRoute: $("#returnRoute"),
+  returnLoaded: $("#returnLoaded"),
+  returnDelivered: $("#returnDelivered"),
+  returnExpected: $("#returnExpected"),
+  returnKm: $("#returnKm"),
+  returnKmHint: $("#returnKmHint"),
+  returnKmRequired: $("#returnKmRequired"),
+  returnBins: $("#returnBins"),
+  returnCondition: $("#returnCondition"),
+  returnNotes: $("#returnNotes"),
+  returnMismatch: $("#returnMismatch"),
+  cancelReturnBtn: $("#cancelReturnBtn"),
 
   toastStack: $("#toastStack"),
 };
@@ -541,6 +659,38 @@ function getCompletedDispatches() {
     });
 }
 
+function getIssuedDispatches() {
+  return state.dispatches
+    .filter((dispatch) => dispatch.status === "In Transit" || dispatch.status === "Completed")
+    .sort((a, b) => {
+      const aTime = new Date(a.dispatchedAt || a.completedAt || `${a.date}T00:00:00`).getTime();
+      const bTime = new Date(b.dispatchedAt || b.completedAt || `${b.date}T00:00:00`).getTime();
+      return bTime - aTime;
+    });
+}
+
+function getInTransitDispatches() {
+  return state.dispatches
+    .filter((dispatch) => dispatch.status === "In Transit")
+    .sort((a, b) => {
+      const aTime = new Date(a.dispatchedAt || `${a.date}T00:00:00`).getTime();
+      const bTime = new Date(b.dispatchedAt || `${b.date}T00:00:00`).getTime();
+      return aTime - bTime;
+    });
+}
+
+function getTransporterInTransitDispatches(transporterName) {
+  return getInTransitDispatches().filter((dispatch) => dispatch.transporterName === transporterName);
+}
+
+function getTransporterIssuedDispatches(transporterName) {
+  return getIssuedDispatches().filter((dispatch) => dispatch.transporterName === transporterName);
+}
+
+function getExpectedReturnBins(dispatch) {
+  return Math.max(0, Number(dispatch.binsLoaded || 0) - Number(dispatch.binsDelivered || 0));
+}
+
 function getCustomerByName(name) {
   return state.customers.find((customer) => customer.name === name);
 }
@@ -568,8 +718,9 @@ function nextDispatchId() {
 /* -------------------------------- Navigation -------------------------------- */
 const VIEW_META = {
   transporter: { crumb: "Transporter Portal", title: "Transporter Portal" },
-  dispatch: { crumb: "Musashi Dispatch Portal", title: "Musashi Dispatch Portal" },
-  admin: { crumb: "Admin Dashboard", title: "Admin Dashboard" },
+  dispatch: { crumb: "Musashi Dispatch · Gate Departure", title: "Musashi Dispatch" },
+  returns: { crumb: "Gate-in & Returns · Arrival Verification", title: "Truck Arrival & Returns" },
+  admin: { crumb: "Admin Dashboard · Reconciliation Ledger", title: "Admin Dashboard" },
 };
 
 function switchView(view, { updateHash = true, scroll = true } = {}) {
@@ -651,6 +802,7 @@ function showLogin() {
   dom.loginScreen.hidden = false;
 
   closeDispatchModal({ restoreFocus: false });
+  closeReturnModal({ restoreFocus: false });
   document.body.classList.remove("modal-open");
 
   dom.loginError.hidden = true;
@@ -738,15 +890,20 @@ function renderAll() {
   renderChrome();
   renderTransporterView();
   renderDispatchView();
+  renderReturnsView();
   renderAdminView();
 }
 
 function renderChrome() {
   const waitingCount = getWaitingDispatches().length;
+  const inTransitCount = getInTransitDispatches().length;
   const completedCount = getCompletedDispatches().length;
 
   dom.navGateBadge.textContent = waitingCount;
   dom.navGateBadge.hidden = waitingCount === 0;
+
+  dom.navReturnsBadge.textContent = inTransitCount;
+  dom.navReturnsBadge.hidden = inTransitCount === 0;
 
   dom.navAdminBadge.textContent = completedCount;
   dom.navAdminBadge.hidden = completedCount === 0;
@@ -755,10 +912,10 @@ function renderChrome() {
 function renderTransporterView() {
   const carrier = currentUser?.role === "transporter" ? currentUser.transporterName : null;
   const waiting = carrier ? getTransporterWaitingDispatches(carrier) : getWaitingDispatches();
-  const completed = carrier ? getTransporterCompletedDispatches(carrier) : getCompletedDispatches();
+  const issued = carrier ? getTransporterIssuedDispatches(carrier) : getIssuedDispatches();
 
   dom.transporterWaitingCount.textContent = waiting.length;
-  dom.transporterGrnCount.textContent = completed.length;
+  dom.transporterGrnCount.textContent = issued.length;
   dom.queueCountPill.textContent = `${waiting.length} waiting`;
 
   /* Gate pulse: compact operational summary under the live queue */
@@ -792,26 +949,28 @@ function renderTransporterView() {
   dom.queueHealth.textContent = health.label;
   dom.queueHealth.dataset.state = health.state;
 
-  /* Completed trips for this carrier */
-  dom.transporterTripsCount.textContent = `${completed.length} ${completed.length === 1 ? "trip" : "trips"}`;
+  /* Trips for this carrier, including loads still out with the truck */
+  dom.transporterTripsCount.textContent = `${issued.length} ${issued.length === 1 ? "trip" : "trips"}`;
 
-  if (completed.length === 0) {
+  if (issued.length === 0) {
     dom.transporterTrips.innerHTML = `
       <div class="empty-state" style="border:0;background:transparent;padding:24px 6px;">
         <span class="empty-icon">${ICONS.box}</span>
-        <h3>No completed trips yet</h3>
+        <h3>No trips issued yet</h3>
         <p>Trips appear here once dispatch issues the GRN.</p>
       </div>`;
   } else {
-    dom.transporterTrips.innerHTML = completed.slice(0, 5).map((dispatch) => `
+    dom.transporterTrips.innerHTML = issued.slice(0, 5).map((dispatch) => `
       <div class="recent-item">
         <div class="recent-main">
           <span class="grn-badge">${escapeHtml(dispatch.grnNumber)}</span>
           <span class="recent-customer">${escapeHtml(dispatch.vehicleNo)} · ${escapeHtml(dispatch.customer)}</span>
         </div>
         <div class="recent-meta">
-          <strong>${formatCount(dispatch.binsLoaded)} bins</strong>
-          <span>${escapeHtml(formatISODate(dispatch.date))}</span>
+          <span class="status-pill ${dispatch.status === "Completed" ? "status-pill--completed" : "status-pill--transit"}">
+            ${dispatch.status === "Completed" ? "Completed" : "In transit"}
+          </span>
+          <span>${formatCount(dispatch.binsDelivered)} delivered · ${formatCount(dispatch.binsReturned)} returning</span>
         </div>
       </div>
     `).join("");
@@ -841,12 +1000,11 @@ function renderTransporterView() {
 
 function renderDispatchView() {
   const waiting = getWaitingDispatches();
-  const completed = getCompletedDispatches();
-  const today = todayISO();
-  const completedToday = completed.filter((dispatch) => dispatch.date === today).length;
+  const issued = getIssuedDispatches();
+  const inTransit = getInTransitDispatches();
 
   dom.dispatchWaitingCount.textContent = waiting.length;
-  dom.dispatchTodayCount.textContent = completedToday;
+  dom.dispatchTodayCount.textContent = inTransit.length;
   dom.waitingCountLabel.textContent = `${waiting.length} waiting`;
 
   if (waiting.length === 0) {
@@ -861,23 +1019,25 @@ function renderDispatchView() {
   }
 
   /* Recent GRNs rail */
-  if (completed.length === 0) {
+  if (issued.length === 0) {
     dom.recentGrnList.innerHTML = `
       <div class="empty-state" style="border:0;background:transparent;padding:24px 6px;">
         <span class="empty-icon">${ICONS.box}</span>
         <h3>No GRNs yet</h3>
-        <p>Completed loads will show their generated GRNs here.</p>
+        <p>Dispatched loads will show their generated GRNs here.</p>
       </div>`;
   } else {
-    dom.recentGrnList.innerHTML = completed.slice(0, 4).map((dispatch) => `
+    dom.recentGrnList.innerHTML = issued.slice(0, 4).map((dispatch) => `
       <div class="recent-item">
         <div class="recent-main">
           <span class="grn-badge">${escapeHtml(dispatch.grnNumber)}</span>
-          <span class="recent-customer">${escapeHtml(dispatch.customer)}</span>
+          <span class="recent-customer">${escapeHtml(dispatch.customer)} · ${escapeHtml(dispatch.location || "")}</span>
         </div>
         <div class="recent-meta">
-          <strong>${formatCount(dispatch.binsLoaded)} bins</strong>
-          <span>${escapeHtml(formatISODate(dispatch.date))}</span>
+          <span class="status-pill ${dispatch.status === "Completed" ? "status-pill--completed" : "status-pill--transit"}">
+            ${dispatch.status === "Completed" ? "Completed" : "In transit"}
+          </span>
+          <span>${formatCount(dispatch.binsDelivered)} delivered · ${formatCount(dispatch.binsReturned)} returning</span>
         </div>
       </div>
     `).join("");
@@ -934,6 +1094,99 @@ function vehicleCard(dispatch) {
   `;
 }
 
+function renderReturnsView() {
+  const inTransit = getInTransitDispatches();
+  const completed = getCompletedDispatches();
+  const today = todayISO();
+  const verifiedToday = completed.filter((dispatch) => String(dispatch.returnVerifiedAt || dispatch.completedAt || "").slice(0, 10) === today);
+
+  dom.returnsInTransitCount.textContent = inTransit.length;
+  dom.returnsTodayCount.textContent = verifiedToday.length;
+  dom.returnsCountLabel.textContent = `${inTransit.length} ${inTransit.length === 1 ? "trip" : "trips"}`;
+
+  if (inTransit.length === 0) {
+    dom.returnsGrid.innerHTML = `
+      <div class="empty-state empty-state--wide">
+        <span class="empty-icon">${ICONS.truck}</span>
+        <h3>No trucks waiting to return</h3>
+        <p>Trucks appear here after dispatch issues the GRN and they leave for a customer.</p>
+      </div>`;
+  } else {
+    dom.returnsGrid.innerHTML = inTransit.map((dispatch) => returnCard(dispatch)).join("");
+  }
+
+  dom.returnsRecentCount.textContent = `${completed.length} verified`;
+  if (completed.length === 0) {
+    dom.returnsRecentList.innerHTML = `
+      <div class="empty-state" style="border:0;background:transparent;padding:24px 6px;">
+        <span class="empty-icon">${ICONS.check}</span>
+        <h3>No completed returns yet</h3>
+        <p>Verified trucks will be recorded here.</p>
+      </div>`;
+  } else {
+    dom.returnsRecentList.innerHTML = completed.slice(0, 5).map((dispatch) => `
+      <div class="recent-item">
+        <div class="recent-main">
+          <span class="grn-badge">${escapeHtml(dispatch.grnNumber)}</span>
+          <span class="recent-customer">${escapeHtml(dispatch.vehicleNo)} · ${escapeHtml(dispatch.customer)}</span>
+        </div>
+        <div class="recent-meta">
+          <strong>${formatCount(dispatch.returnedBins)} returned · ${escapeHtml(dispatch.returnCondition || "Empty")}</strong>
+          <span>${escapeHtml(formatRelative(dispatch.returnVerifiedAt || dispatch.completedAt))}</span>
+        </div>
+      </div>
+    `).join("");
+  }
+}
+
+function returnCard(dispatch) {
+  const customer = getCustomerByName(dispatch.customer);
+  const code = customer?.code || "CUST";
+  const expected = getExpectedReturnBins(dispatch);
+
+  return `
+    <article class="return-card">
+      <div class="vehicle-card-top">
+        <span class="plate"><span class="plate-dot"></span>${escapeHtml(dispatch.vehicleNo)}</span>
+        <span class="status-pill status-pill--transit">
+          <span class="status-dot status-dot--sm"></span>In transit
+        </span>
+      </div>
+
+      <div class="vehicle-dest">
+        <span class="code-chip">${escapeHtml(code)}</span>
+        <div>
+          <strong>${escapeHtml(dispatch.customer)}</strong>
+          <span>${escapeHtml(dispatch.location || "—")} · ${formatCount(dispatch.kilometers)} km</span>
+        </div>
+      </div>
+
+      <dl class="vehicle-meta">
+        <div><dt>GRN issued</dt><dd class="mono">${escapeHtml(dispatch.grnNumber)}</dd></div>
+        <div><dt>Driver</dt><dd>${escapeHtml(dispatch.driverName)}</dd></div>
+        <div><dt>Dispatched</dt><dd>${escapeHtml(formatRelative(dispatch.dispatchedAt))}</dd></div>
+        <div><dt>Invoice</dt><dd class="mono">${escapeHtml(dispatch.invoiceNo || "—")}</dd></div>
+      </dl>
+
+      <div class="bin-split">
+        <div><span>Loaded</span><strong>${formatCount(dispatch.binsLoaded)}</strong></div>
+        <div><span>Delivered</span><strong>${formatCount(dispatch.binsDelivered)}</strong></div>
+        <div><span>Expected back</span><strong>${formatCount(expected)}</strong></div>
+      </div>
+
+      <div class="vehicle-actions">
+        <span class="vehicle-id mono">${escapeHtml(dispatch.dispatchId)}</span>
+        <button class="btn btn-primary btn-sm" type="button" data-return="${escapeHtml(dispatch.dispatchId)}">
+          Verify return
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m5 12.5 4.5 4.5L19 7" />
+          </svg>
+        </button>
+      </div>
+    </article>
+  `;
+}
+
 function renderLastIssuedDispatch() {
   if (!lastIssuedDispatchId) {
     dom.lastDispatchPanel.hidden = true;
@@ -941,42 +1194,42 @@ function renderLastIssuedDispatch() {
   }
 
   const dispatch = state.dispatches.find((item) => item.dispatchId === lastIssuedDispatchId);
-  if (!dispatch || dispatch.status !== "Completed") {
+  if (!dispatch || dispatch.status === "Awaiting Dispatch") {
     dom.lastDispatchPanel.hidden = true;
     return;
   }
 
   dom.lastGrn.textContent = dispatch.grnNumber;
-  dom.lastGrnMeta.textContent = `${dispatch.vehicleNo} · ${formatCount(dispatch.binsLoaded)} bins → ${dispatch.customer} · invoice ${dispatch.invoiceNo}`;
+  dom.lastGrnMeta.textContent = `${dispatch.vehicleNo} · ${formatCount(dispatch.binsDelivered)} delivered / ${formatCount(dispatch.binsReturned)} returning → ${dispatch.customer}, ${escapeHtml(dispatch.location || "")} · ${formatCount(dispatch.kilometers)} km · invoice ${dispatch.invoiceNo}`;
   dom.lastDispatchPanel.hidden = false;
 }
 
 function renderAdminView() {
   const completed = getCompletedDispatches();
+  const issued = getIssuedDispatches();
+  const inTransit = getInTransitDispatches();
   const waitingCount = getWaitingDispatches().length;
-  const totalBins = completed.reduce((sum, dispatch) => sum + (Number(dispatch.binsLoaded) || 0), 0);
-  const averageBins = completed.length ? Math.round(totalBins / completed.length) : 0;
-  const today = todayISO();
-  const completedToday = completed.filter((dispatch) => dispatch.date === today).length;
-  const transportersUsed = new Set(completed.map((dispatch) => dispatch.transporterName)).size;
+  const totalDelivered = completed.reduce((sum, dispatch) => sum + (Number(dispatch.binsDelivered) || 0), 0);
+  const averageDelivered = completed.length ? Math.round(totalDelivered / completed.length) : 0;
+  const transportersUsed = new Set(issued.map((dispatch) => dispatch.transporterName)).size;
 
   dom.metricCompleted.textContent = formatCount(completed.length);
-  dom.metricBins.textContent = formatCount(totalBins);
+  dom.metricBins.textContent = formatCount(totalDelivered);
+  dom.metricTransit.textContent = formatCount(inTransit.length);
   dom.metricActive.textContent = formatCount(waitingCount);
-  dom.metricAvgBins.textContent = formatCount(averageBins);
-  dom.metricToday.textContent = formatCount(completedToday);
+  dom.metricAvgBins.textContent = formatCount(averageDelivered);
   dom.metricTransporters.textContent = formatCount(transportersUsed);
-  dom.ledgerCountPill.textContent = `${completed.length} ${completed.length === 1 ? "trip" : "trips"}`;
+  dom.ledgerCountPill.textContent = `${issued.length} ${issued.length === 1 ? "dispatch" : "dispatches"}`;
 
   renderAdminTable();
   renderTransporterLedger();
   renderActivity();
 }
 
-function getFilteredCompletedDispatches() {
+function getFilteredIssuedDispatches() {
   const search = adminFilters.search.trim().toLowerCase();
 
-  return getCompletedDispatches().filter((dispatch) => {
+  return getIssuedDispatches().filter((dispatch) => {
     if (adminFilters.customer && dispatch.customer !== adminFilters.customer) return false;
     if (adminFilters.transporter && dispatch.transporterName !== adminFilters.transporter) return false;
     if (!search) return true;
@@ -988,7 +1241,9 @@ function getFilteredCompletedDispatches() {
       dispatch.invoiceNo,
       dispatch.driverName,
       dispatch.customer,
+      dispatch.location,
       dispatch.transporterName,
+      dispatch.status,
     ].join(" ").toLowerCase();
 
     return haystack.includes(search);
@@ -996,17 +1251,17 @@ function getFilteredCompletedDispatches() {
 }
 
 function renderAdminTable() {
-  const completed = getCompletedDispatches();
-  const filtered = getFilteredCompletedDispatches();
+  const issued = getIssuedDispatches();
+  const filtered = getFilteredIssuedDispatches();
 
   if (filtered.length === 0) {
     dom.completedBody.innerHTML = `
       <tr>
-        <td colspan="10">
+        <td colspan="14">
           <div class="empty-state" style="border:0;background:transparent;padding:38px 16px;">
             <span class="empty-icon">${ICONS.box}</span>
             <h3>No matching dispatches</h3>
-            <p>Adjust the search or filters to see completed trips.</p>
+            <p>Adjust the search or filters to see dispatched trips.</p>
           </div>
         </td>
       </tr>`;
@@ -1014,13 +1269,15 @@ function renderAdminTable() {
     dom.completedBody.innerHTML = filtered.map((dispatch) => {
       const customer = getCustomerByName(dispatch.customer);
       const code = customer?.code || "CUST";
+      const isCompleted = dispatch.status === "Completed";
+      const returned = isCompleted ? dispatch.returnedBins : getExpectedReturnBins(dispatch);
 
       return `
         <tr>
           <td>
             <span class="date-cell">
               <strong>${escapeHtml(formatISODate(dispatch.date))}</strong>
-              <small>completed</small>
+              <small>${isCompleted ? "closed" : "dispatched"}</small>
             </span>
           </td>
           <td><span class="mono">${escapeHtml(dispatch.dispatchId)}</span></td>
@@ -1039,29 +1296,51 @@ function renderAdminTable() {
           <td>
             <span class="route-cell">
               <span class="code-chip">${escapeHtml(code)}</span>
-              <span>${escapeHtml(dispatch.customer)}</span>
+              <span class="route-copy">
+                <strong>${escapeHtml(dispatch.customer)}</strong>
+                <small>${escapeHtml(dispatch.location || "—")}</small>
+              </span>
             </span>
           </td>
+          <td class="num"><span class="km-cell">${formatCount(dispatch.kilometers)}</span></td>
           <td><span class="invoice-cell">${escapeHtml(dispatch.invoiceNo || "—")}</span></td>
           <td class="num"><span class="bins-pill">${formatCount(dispatch.binsLoaded)}</span></td>
+          <td class="num"><span class="bins-pill">${formatCount(dispatch.binsDelivered)}</span></td>
+          <td class="num">
+            <span class="bins-cell">
+              <strong>${formatCount(returned)}</strong>
+              <small>${isCompleted ? "verified" : "expected"}</small>
+            </span>
+          </td>
           <td><span class="grn-badge">${escapeHtml(dispatch.grnNumber)}</span></td>
-          <td><span class="time-cell">${escapeHtml(formatTime(dispatch.completedAt))}</span></td>
+          <td>
+            <span class="status-pill ${isCompleted ? "status-pill--completed" : "status-pill--transit"}">
+              <span class="status-dot status-dot--sm"></span>
+              ${isCompleted ? "Verified" : "In transit"}
+            </span>
+          </td>
+          <td>
+            <span class="date-cell">
+              <strong>${escapeHtml(isCompleted ? formatTime(dispatch.returnVerifiedAt || dispatch.completedAt) : "—")}</strong>
+              <small>${escapeHtml(isCompleted ? (dispatch.returnCondition || "Empty") : "awaiting return")}</small>
+            </span>
+          </td>
         </tr>
       `;
     }).join("");
   }
 
-  dom.tableCount.textContent = `Showing ${filtered.length} of ${completed.length} ${completed.length === 1 ? "trip" : "trips"}`;
+  dom.tableCount.textContent = `Showing ${filtered.length} of ${issued.length} ${issued.length === 1 ? "dispatch" : "dispatches"}`;
 }
 
 function renderTransporterLedger() {
-  const completed = getCompletedDispatches();
+  const issued = getIssuedDispatches();
   const maxSequence = Math.max(...state.transporters.map((transporter) => Number(transporter.currentSequence) || 0), 1);
 
   dom.customerLedger.innerHTML = state.transporters.map((transporter) => {
     const sequence = Number(transporter.currentSequence) || 0;
-    const trips = completed.filter((dispatch) => dispatch.transporterName === transporter.name);
-    const binCount = trips.reduce((sum, dispatch) => sum + (Number(dispatch.binsLoaded) || 0), 0);
+    const trips = issued.filter((dispatch) => dispatch.transporterName === transporter.name);
+    const binCount = trips.reduce((sum, dispatch) => sum + (Number(dispatch.binsDelivered) || 0), 0);
     const lastGRN = sequence > 0 ? formatGRN(transporter.code, sequence) : "—";
     const nextGRN = formatGRN(transporter.code, sequence + 1);
     const width = Math.max(5, Math.round((sequence / maxSequence) * 100));
@@ -1072,7 +1351,7 @@ function renderTransporterLedger() {
           <span class="code-chip">${escapeHtml(transporter.code)}</span>
           <div class="sequence-customer">
             <strong>${escapeHtml(transporter.name)}</strong>
-            <small>${trips.length} trip${trips.length === 1 ? "" : "s"} · ${formatCount(binCount)} bins</small>
+            <small>${trips.length} dispatch${trips.length === 1 ? "" : "es"} · ${formatCount(binCount)} bins delivered</small>
           </div>
           <div class="sequence-next">
             <span>Next GRN</span>
@@ -1106,8 +1385,13 @@ function renderActivity() {
 
   dom.activityList.innerHTML = items.map((item) => {
     const message = escapeHtml(item.message).replace(/\b(GRN [A-Z0-9-]+)/g, "<b>$1</b>");
+    const typeClass = item.type === "grn"
+      ? "activity-item--grn"
+      : item.type === "return"
+        ? "activity-item--return"
+        : "";
     return `
-      <div class="activity-item ${item.type === "grn" ? "activity-item--grn" : ""}">
+      <div class="activity-item ${typeClass}">
         <span class="activity-dot" aria-hidden="true"></span>
         <div class="activity-body">
           <p>${message}</p>
@@ -1227,6 +1511,55 @@ function handleNomination(event) {
 }
 
 /* ----------------------------------- Modal ---------------------------------- */
+function applyDispatchRoute(customerName, { resetKm = true } = {}) {
+  const customer = getCustomerByName(customerName);
+  const field = dom.dispatchKm.closest(".field");
+
+  if (!customer) {
+    dom.dispatchLocation.value = "";
+    dom.dispatchKm.value = "";
+    dom.dispatchKm.readOnly = true;
+    dom.dispatchKm.placeholder = "Select a customer first";
+    if (dom.dispatchKmHint) dom.dispatchKmHint.textContent = "Location and kilometres are filled from the destination customer.";
+    field?.classList.add("field--readonly");
+    return;
+  }
+
+  const fixed = Number(customer.fixedKm) > 0;
+  dom.dispatchLocation.value = customer.city || "";
+
+  if (fixed) {
+    if (resetKm) dom.dispatchKm.value = customer.fixedKm;
+    dom.dispatchKm.readOnly = true;
+    dom.dispatchKm.placeholder = "";
+    if (dom.dispatchKmHint) dom.dispatchKmHint.textContent = `Fixed route · ${customer.city} · ${customer.fixedKm} km (Locked).`;
+    field?.classList.add("field--readonly");
+  } else {
+    if (resetKm) dom.dispatchKm.value = "";
+    dom.dispatchKm.readOnly = false;
+    dom.dispatchKm.placeholder = "Enter km now or add on return";
+    if (dom.dispatchKmHint) dom.dispatchKmHint.textContent = `Variable route · ${customer.city}. Enter actual km now or leave blank to add on truck return.`;
+    field?.classList.remove("field--readonly");
+  }
+}
+
+function updateBinSplit() {
+  const loadedRaw = dom.binsLoaded.value.trim();
+  const deliveredRaw = dom.binsDelivered.value.trim();
+  const loaded = Number(loadedRaw);
+  const delivered = Number(deliveredRaw);
+
+  if (!loadedRaw || !deliveredRaw || !Number.isInteger(loaded) || !Number.isInteger(delivered) || delivered > loaded) {
+    dom.binsReturned.value = "";
+    dom.binSplitHint.textContent = "Returned bins are calculated as total loaded minus delivered.";
+    return;
+  }
+
+  const returned = Math.max(0, loaded - delivered);
+  dom.binsReturned.value = returned;
+  dom.binSplitHint.textContent = `${formatCount(loaded)} loaded − ${formatCount(delivered)} delivered = ${formatCount(returned)} returning with the truck.`;
+}
+
 function openDispatchModal(dispatchId) {
   const dispatch = state.dispatches.find((item) => item.dispatchId === dispatchId);
 
@@ -1257,7 +1590,11 @@ function openDispatchModal(dispatchId) {
   dom.dispatchCustomer.value = "";
   dom.dispatchDriverId.value = "";
   dom.binsLoaded.value = "";
+  dom.binsDelivered.value = "";
+  dom.binsReturned.value = "";
   dom.invoiceNo.value = "";
+  dom.binSplitHint.textContent = "Returned bins are calculated as total loaded minus delivered.";
+  applyDispatchRoute("");
   clearFormErrors(dom.dispatchForm);
 
   dom.modalBackdrop.hidden = false;
@@ -1315,13 +1652,33 @@ function handleDispatchSubmit(event) {
   const customer = getCustomerByName(customerName);
   const driverId = dom.dispatchDriverId.value.trim().toUpperCase();
   const binsRaw = dom.binsLoaded.value.trim();
+  const deliveredRaw = dom.binsDelivered.value.trim();
+  const kmRaw = dom.dispatchKm.value.trim();
   const invoiceNo = dom.invoiceNo.value.trim().toUpperCase();
   const bins = Number(binsRaw);
+  const delivered = Number(deliveredRaw);
+  const kilometers = Number(kmRaw);
   const invalidFields = [];
 
   if (!customer) {
     setFieldError(dom.dispatchCustomer, "Select the destination customer.");
     invalidFields.push(dom.dispatchCustomer);
+  }
+
+  const isFixed = Number(customer?.fixedKm) > 0;
+  let finalKm = null;
+
+  if (isFixed) {
+    finalKm = customer.fixedKm;
+  } else if (kmRaw !== "") {
+    if (!Number.isInteger(kilometers) || kilometers < 1 || kilometers > 5000) {
+      setFieldError(dom.dispatchKm, "Enter the route distance in whole kilometres (1–5,000) or leave blank to add on return.");
+      invalidFields.push(dom.dispatchKm);
+    } else {
+      finalKm = kilometers;
+    }
+  } else {
+    finalKm = null;
   }
 
   if (!/^[A-Z0-9-]{4,24}$/.test(driverId)) {
@@ -1334,6 +1691,11 @@ function handleDispatchSubmit(event) {
     invalidFields.push(dom.binsLoaded);
   }
 
+  if (deliveredRaw === "" || !Number.isInteger(delivered) || delivered < 0 || (Number.isInteger(bins) && delivered > bins)) {
+    setFieldError(dom.binsDelivered, "Enter bins delivered (0 or more, up to the total loaded).");
+    invalidFields.push(dom.binsDelivered);
+  }
+
   if (!/^[A-Z0-9][A-Z0-9/._-]{2,29}$/.test(invoiceNo)) {
     setFieldError(dom.invoiceNo, "Enter a valid invoice number (3–30 characters).");
     invalidFields.push(dom.invoiceNo);
@@ -1344,22 +1706,36 @@ function handleDispatchSubmit(event) {
     return;
   }
 
+  const binsReturned = Math.max(0, bins - delivered);
+
   /* Custom GRN logic: transporter code + incremented transporter sequence */
   const nextSequence = Number(transporter.currentSequence) + 1;
   const grnNumber = formatGRN(transporter.code, nextSequence);
 
   transporter.currentSequence = nextSequence;
-  dispatch.status = "Completed";
+  dispatch.status = "In Transit";
   dispatch.customer = customer.name;
+  dispatch.location = customer.city || "";
+  dispatch.fixedKm = Number(customer.fixedKm) > 0 ? Number(customer.fixedKm) : null;
+  dispatch.kilometers = finalKm;
   dispatch.driverId = driverId;
   dispatch.binsLoaded = bins;
+  dispatch.binsDelivered = delivered;
+  dispatch.binsReturned = binsReturned;
+  dispatch.returnedBins = null;
+  dispatch.returnCondition = null;
+  dispatch.returnNotes = "";
   dispatch.invoiceNo = invoiceNo;
   dispatch.grnNumber = grnNumber;
   dispatch.date = todayISO();
-  dispatch.completedAt = new Date().toISOString();
+  dispatch.dispatchedAt = new Date().toISOString();
+  dispatch.completedAt = null;
+  dispatch.returnedAt = null;
+  dispatch.returnVerifiedAt = null;
 
+  const kmDesc = finalKm ? `${finalKm} km` : "km to be added on return";
   lastIssuedDispatchId = dispatch.dispatchId;
-  pushActivity("grn", `GRN ${grnNumber} issued for ${dispatch.transporterName} · ${bins} bins to ${customer.name}.`);
+  pushActivity("grn", `GRN ${grnNumber} issued · ${delivered} delivered / ${binsReturned} returning · ${customer.name} (${kmDesc}).`);
   saveState();
 
   closeDispatchModal({ restoreFocus: false });
@@ -1367,8 +1743,203 @@ function handleDispatchSubmit(event) {
 
   showToast({
     title: `GRN ${grnNumber} issued`,
-    message: `${dispatch.transporterName} · ${dispatch.vehicleNo} · ${formatCount(bins)} bins → ${customer.name}. Moved to the admin ledger.`,
+    message: `${dispatch.transporterName} · ${dispatch.vehicleNo} · ${formatCount(delivered)} delivered / ${formatCount(binsReturned)} returning → ${customer.name} (${kmDesc}). Now in transit.`,
     variant: "success",
+  });
+}
+
+/* ------------------------------ Return verification ------------------------- */
+function updateReturnMismatch() {
+  const dispatch = state.dispatches.find((item) => item.dispatchId === activeReturnId);
+  if (!dispatch) return;
+
+  const expected = getExpectedReturnBins(dispatch);
+  const actualRaw = dom.returnBins.value.trim();
+  const actual = Number(actualRaw);
+  const hasValue = actualRaw !== "" && Number.isInteger(actual) && actual >= 0;
+
+  if (!hasValue) {
+    dom.returnMismatch.hidden = true;
+    dom.returnMismatch.textContent = "";
+    return;
+  }
+
+  if (actual === expected) {
+    dom.returnMismatch.hidden = false;
+    dom.returnMismatch.className = "return-note return-note--ok";
+    dom.returnMismatch.textContent = expected === 0
+      ? "Matches expected 0 returning bins. Truck returned empty for final verification."
+      : `Matches the expected ${formatCount(expected)} returning bins.`;
+    return;
+  }
+
+  const difference = Math.abs(actual - expected);
+  dom.returnMismatch.hidden = false;
+  dom.returnMismatch.className = "return-note return-note--warn";
+  dom.returnMismatch.textContent = `${actual < expected ? "Short by" : "Excess of"} ${formatCount(difference)} bins versus the ${formatCount(expected)} expected back. The discrepancy will be logged in the audit ledger.`;
+}
+
+function openReturnModal(dispatchId) {
+  const dispatch = state.dispatches.find((item) => item.dispatchId === dispatchId);
+
+  if (!dispatch || dispatch.status !== "In Transit") {
+    showToast({ title: "Trip unavailable", message: "This truck is no longer waiting for return verification.", variant: "error" });
+    renderAll();
+    return;
+  }
+
+  window.clearTimeout(returnCloseTimer);
+  const session = ++returnSession;
+  activeReturnId = dispatch.dispatchId;
+  returnLastFocused = document.activeElement;
+
+  const expected = getExpectedReturnBins(dispatch);
+  dom.returnDispatchId.value = dispatch.dispatchId;
+  dom.returnVehicle.textContent = `${dispatch.vehicleNo} · ${dispatch.driverName}`;
+  dom.returnTransporter.textContent = dispatch.transporterName;
+  dom.returnGrn.textContent = dispatch.grnNumber;
+  dom.returnRoute.textContent = `${dispatch.customer} · ${dispatch.location || "—"}${dispatch.kilometers ? ` · ${formatCount(dispatch.kilometers)} km` : " · (km pending)"}`;
+  dom.returnLoaded.textContent = formatCount(dispatch.binsLoaded);
+  dom.returnDelivered.textContent = formatCount(dispatch.binsDelivered);
+  dom.returnExpected.textContent = formatCount(expected);
+  dom.returnBins.value = expected;
+  dom.returnCondition.value = expected === 0 ? "No bins returned" : "Empty";
+  dom.returnNotes.value = "";
+
+  if (dom.returnKm) {
+    const isFixed = Number(dispatch.fixedKm) > 0;
+    const kmField = dom.returnKm.closest(".field");
+    if (isFixed) {
+      dom.returnKm.value = dispatch.fixedKm;
+      dom.returnKm.readOnly = true;
+      if (dom.returnKmHint) dom.returnKmHint.textContent = `Fixed route · ${dispatch.location} (${dispatch.fixedKm} km locked).`;
+      if (dom.returnKmRequired) dom.returnKmRequired.hidden = true;
+      kmField?.classList.add("field--readonly");
+    } else {
+      dom.returnKm.value = dispatch.kilometers || "";
+      dom.returnKm.readOnly = false;
+      if (dom.returnKmHint) {
+        dom.returnKmHint.textContent = dispatch.kilometers
+          ? `Variable distance · Confirm or adjust actual trip kilometres (${dispatch.location}).`
+          : `Variable distance · Kilometres were not added at dispatch (${dispatch.location}). Please enter actual km now.`;
+      }
+      if (dom.returnKmRequired) dom.returnKmRequired.hidden = false;
+      kmField?.classList.remove("field--readonly");
+    }
+  }
+
+  dom.returnMismatch.hidden = true;
+  dom.returnMismatch.textContent = "";
+  clearFormErrors(dom.returnForm);
+  updateReturnMismatch();
+
+  dom.returnModal.hidden = false;
+  document.body.classList.add("modal-open");
+
+  requestAnimationFrame(() => {
+    if (session !== returnSession) return;
+    dom.returnModal.classList.add("is-open");
+    window.setTimeout(() => {
+      if (session === returnSession) {
+        if (dom.returnKm && !dom.returnKm.readOnly && !dom.returnKm.value) {
+          dom.returnKm.focus();
+        } else {
+          dom.returnBins.focus();
+        }
+      }
+    }, 80);
+  });
+}
+
+function closeReturnModal({ restoreFocus = true } = {}) {
+  if (dom.returnModal.hidden) return;
+
+  returnSession += 1;
+  dom.returnModal.classList.remove("is-open");
+  document.body.classList.remove("modal-open");
+  activeReturnId = null;
+
+  window.clearTimeout(returnCloseTimer);
+  returnCloseTimer = window.setTimeout(() => {
+    if (!dom.returnModal.classList.contains("is-open")) dom.returnModal.hidden = true;
+  }, 240);
+
+  if (restoreFocus && returnLastFocused && document.contains(returnLastFocused)) {
+    returnLastFocused.focus({ preventScroll: true });
+  }
+  returnLastFocused = null;
+}
+
+function handleReturnSubmit(event) {
+  event.preventDefault();
+  clearFormErrors(dom.returnForm);
+
+  const dispatchId = activeReturnId || dom.returnDispatchId.value;
+  const dispatch = state.dispatches.find((item) => item.dispatchId === dispatchId);
+
+  if (!dispatch || dispatch.status !== "In Transit") {
+    showToast({ title: "Trip unavailable", message: "This trip was already completed or removed.", variant: "error" });
+    closeReturnModal();
+    renderAll();
+    return;
+  }
+
+  const expected = getExpectedReturnBins(dispatch);
+  const actualRaw = dom.returnBins.value.trim();
+  const actual = Number(actualRaw);
+  const condition = dom.returnCondition.value;
+  const notes = dom.returnNotes.value.trim();
+  const invalidFields = [];
+
+  let finalKm = dispatch.kilometers;
+  if (dom.returnKm && !dom.returnKm.readOnly) {
+    const kmRaw = dom.returnKm.value.trim();
+    const kmVal = Number(kmRaw);
+    if (!kmRaw || !Number.isInteger(kmVal) || kmVal < 1 || kmVal > 5000) {
+      setFieldError(dom.returnKm, "Enter the actual trip distance in kilometres (1–5,000).");
+      invalidFields.push(dom.returnKm);
+    } else {
+      finalKm = kmVal;
+    }
+  }
+
+  if (!actualRaw || !Number.isInteger(actual) || actual < 0 || actual > 2000) {
+    setFieldError(dom.returnBins, "Enter the bins physically returned (0–2,000).");
+    invalidFields.push(dom.returnBins);
+  }
+
+  if (!["Empty", "Contains material", "No bins returned"].includes(condition)) {
+    setFieldError(dom.returnCondition, "Select the returned-bin condition.");
+    invalidFields.push(dom.returnCondition);
+  }
+
+  if (invalidFields.length > 0) {
+    invalidFields[0].focus();
+    return;
+  }
+
+  const now = new Date().toISOString();
+  dispatch.status = "Completed";
+  dispatch.kilometers = finalKm || dispatch.fixedKm || 0;
+  dispatch.returnedBins = actual;
+  dispatch.binsReturned = actual;
+  dispatch.returnCondition = condition;
+  dispatch.returnNotes = notes;
+  dispatch.returnedAt = now;
+  dispatch.returnVerifiedAt = now;
+  dispatch.completedAt = now;
+
+  pushActivity("return", `Return verified for GRN ${dispatch.grnNumber} · ${actual} bins back (${condition}) · ${dispatch.kilometers} km · trip completed.`);
+  saveState();
+
+  closeReturnModal({ restoreFocus: false });
+  renderAll();
+
+  const mismatch = actual !== expected;
+  showToast({
+    title: `Trip completed · ${dispatch.grnNumber}`,
+    message: `${dispatch.vehicleNo} returned with ${formatCount(actual)} bins (${condition.toLowerCase()}).${mismatch ? ` Expected ${formatCount(expected)} — mismatch recorded.` : " Return count matched."}`,
+    variant: mismatch ? "info" : "success",
   });
 }
 
@@ -1414,10 +1985,10 @@ function csvCell(value) {
 }
 
 function exportCompletedDispatches() {
-  const rows = getFilteredCompletedDispatches();
+  const rows = getFilteredIssuedDispatches();
 
   if (rows.length === 0) {
-    showToast({ title: "Nothing to export", message: "Adjust the filters to include at least one trip.", variant: "info" });
+    showToast({ title: "Nothing to export", message: "Adjust the filters to include at least one dispatch.", variant: "info" });
     return;
   }
 
@@ -1431,9 +2002,18 @@ function exportCompletedDispatches() {
     "Driver ID",
     "Customer",
     "Customer Code",
+    "Location",
+    "Kilometres",
     "Bins Loaded",
+    "Bins Delivered",
+    "Bins Expected Back",
+    "Bins Returned",
+    "Return Condition",
+    "Return Notes",
     "Invoice No",
     "GRN Number",
+    "Return Status",
+    "Dispatched At",
     "Completed At",
   ];
 
@@ -1447,9 +2027,18 @@ function exportCompletedDispatches() {
     dispatch.driverId,
     dispatch.customer,
     getCustomerCode(dispatch.customer),
+    dispatch.location,
+    dispatch.kilometers,
     dispatch.binsLoaded,
+    dispatch.binsDelivered,
+    dispatch.status === "Completed" ? dispatch.returnedBins : getExpectedReturnBins(dispatch),
+    dispatch.status === "Completed" ? dispatch.returnedBins : "",
+    dispatch.returnCondition || "",
+    dispatch.returnNotes || "",
     dispatch.invoiceNo,
     dispatch.grnNumber,
+    dispatch.status,
+    dispatch.dispatchedAt || "",
     dispatch.completedAt || "",
   ]);
 
@@ -1480,6 +2069,7 @@ function resetDemo() {
   if (!confirmed) return;
 
   closeDispatchModal({ restoreFocus: false });
+  closeReturnModal({ restoreFocus: false });
 
   try {
     localStorage.removeItem(STORAGE_KEY);
@@ -1603,6 +2193,15 @@ function bindEvents() {
     }
   });
 
+  dom.dispatchCustomer.addEventListener("change", () => {
+    applyDispatchRoute(dom.dispatchCustomer.value);
+    dom.dispatchKm.focus();
+  });
+
+  [dom.binsLoaded, dom.binsDelivered].forEach((input) => {
+    input.addEventListener("input", updateBinSplit);
+  });
+
   /* Waiting vehicle cards (event delegation) */
   dom.waitingGrid.addEventListener("click", (event) => {
     const button = event.target.closest("[data-process]");
@@ -1614,6 +2213,31 @@ function bindEvents() {
   dom.modalClose.addEventListener("click", () => closeDispatchModal());
   dom.cancelDispatchBtn.addEventListener("click", () => closeDispatchModal());
   dom.dispatchForm.addEventListener("submit", handleDispatchSubmit);
+
+  /* Return verification */
+  dom.returnsGrid.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-return]");
+    if (!button) return;
+    openReturnModal(button.dataset.return);
+  });
+
+  dom.returnModalClose.addEventListener("click", () => closeReturnModal());
+  dom.cancelReturnBtn.addEventListener("click", () => closeReturnModal());
+  dom.returnForm.addEventListener("submit", handleReturnSubmit);
+  dom.returnBins.addEventListener("input", updateReturnMismatch);
+
+  dom.returnForm.addEventListener("input", (event) => {
+    const field = event.target.closest(".field");
+    if (!field) return;
+    field.classList.remove("has-error");
+    const error = field.querySelector(".field-error");
+    if (error) error.textContent = "";
+    event.target.removeAttribute("aria-invalid");
+  });
+
+  dom.returnModal.addEventListener("click", (event) => {
+    if (event.target === dom.returnModal) closeReturnModal();
+  });
 
   dom.modalBackdrop.addEventListener("click", (event) => {
     if (event.target === dom.modalBackdrop) closeDispatchModal();
@@ -1639,14 +2263,23 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !dom.modalBackdrop.hidden) {
-      closeDispatchModal();
-      return;
+    if (event.key === "Escape") {
+      if (!dom.returnModal.hidden) {
+        closeReturnModal();
+        return;
+      }
+      if (!dom.modalBackdrop.hidden) {
+        closeDispatchModal();
+        return;
+      }
     }
 
-    /* Keep keyboard focus inside the modal while it is open */
-    if (event.key !== "Tab" || dom.modalBackdrop.hidden) return;
-    const focusable = $$('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])', dom.modal)
+    /* Keep keyboard focus inside whichever modal is open */
+    if (event.key !== "Tab") return;
+    if (dom.modalBackdrop.hidden && dom.returnModal.hidden) return;
+
+    const activeModal = !dom.returnModal.hidden ? dom.returnModalEl : dom.modal;
+    const focusable = $$('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])', activeModal)
       .filter((element) => !element.disabled && element.offsetParent !== null);
 
     if (focusable.length === 0) return;

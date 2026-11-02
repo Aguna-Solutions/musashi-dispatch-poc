@@ -41,12 +41,20 @@ for the current tab, and **Sign out** ends the session.
    pre-registration step on this screen.
 3. **Musashi Dispatch** sees the vehicle under *Waiting vehicles*, verifies the truck
    and driver at Gate 02, and opens **Verify & dispatch**.
-4. Dispatch captures the **destination customer**, **driver DL / ID**, **bins loaded**
-   and **external invoice number**, then generates the GRN.
-5. The trip moves to the **Admin Dashboard** ledger with the transporter's next GRN.
+4. Dispatch captures:
+   - **Destination customer** & auto-populated **location** (e.g. Hero Honda in Gurgaon, Tata Motors in Gujarat).
+   - **Route kilometres**: fixed routes (e.g. Gurgaon = 90 km, Manesar = 45 km, Tapukara = 70 km) lock automatically; variable routes (e.g. Sanand/Gujarat) allow entering kilometres now or leaving them to be recorded upon truck arrival.
+   - **Driver DL / ID** and **external tax invoice number**.
+   - **Total bins loaded** vs. **Bins delivered to customer**: returning bins (e.g. 100 loaded − 80 delivered = 20 returning with truck) are auto-calculated and tracked.
+   - Dispatch issues the transporter GRN; truck status advances to **In Transit**.
+5. **Truck Arrival & Returns Workspace**:
+   - When the truck returns to Musashi Gate 02 (even if 0 bins return), the dispatch gate conducts final gate-in verification.
+   - Gate records actual returned bins (empty / rejected parts) and enters/confirms actual trip kilometres for variable routes.
+   - Completing return verification marks the trip **Completed** and commits it to the billing ledger.
+6. The trip moves to the **Admin Dashboard** ledger with full bin audit and distance reconciliation.
 
 Transporters only see their own vehicles and completed trips. Dispatch and Admin see
-the plant-wide queue and ledger.
+the plant-wide queue, arrival verification, and ledger.
 
 ## GRN logic
 
@@ -62,32 +70,29 @@ the dispatch is completed, so a number can never be reused across that carrier's
 
 ## Demo data and persistence
 
-- Seeded with 3 customers, 2 transporters, 9 completed trips and 4 waiting vehicles.
+- Seeded with 5 customers (Hero Honda Gurgaon [90 km fixed], Maruti Suzuki Manesar [45 km fixed], FCC Clutch Tapukara [70 km fixed], Tata Motors Sanand Gujarat [variable km], JCB India Vadodara Gujarat [variable km]), 2 transporters, 9 completed trips, 1 in-transit trip (DLV-0019: 100 loaded, 80 delivered, 20 returning) and 4 waiting vehicles.
 - Waiting seed vehicles are `Awaiting Dispatch` with no destination or DL yet, because
   dispatch captures those at the gate.
-- Seeded transporter counters: STC `24`, DLV `18` (completed samples use `STC-0020`–`STC-0024`
+- Seeded transporter counters: STC `24`, DLV `19` (completed samples use `STC-0020`–`STC-0024`
   and `DLV-0015`–`DLV-0018`).
 - State is stored in `localStorage` under the key `musashi-dispatch-poc-v1`
-  (schema version `3`; older local data is reseeded automatically).
+  (schema version `5`; older local data is reseeded automatically).
 - Use **Reset demo** on the Admin Dashboard to restore the seed data.
 - Data stays in the browser; there is no backend in this POC.
 
-## Admin Dashboard
+## Workspaces & Views
 
-- Six metrics: completed dispatches, bins transported, active at gate, average bins per
-  trip, dispatched today and transporters in the ledger.
-- Ledger columns include driver name + DL, destination, invoice, bins, GRN and the
-  completion time.
-- Transporter GRN sequence panel shows trips, bins, last issued GRN and next GRN.
-- Search, customer/transporter filters and CSV export include transporter code and
-  driver DL.
+- **Transporter Portal**: Request submission and carrier-specific vehicle tracking.
+- **Musashi Dispatch**: Gate 02 departure verification, route assignment (fixed/variable km), bin split, and GRN generation.
+- **Truck Arrival & Returns**: Gate 02 return verification, physical bin count reconciliation, actual kilometre recording, and trip completion.
+- **Admin Dashboard**: Live reconciliation ledger (14 columns including route, distance, bins loaded/delivered/returned, status), locked carrier sequence counters, and CSV export.
 
 ## Files
 
 ```text
-index.html   Login screen, role-based shell, three views, dispatch modal, notifications
-styles.css   Light operations theme, responsive layout, red DHL accent
-app.js       Auth/RBAC, carrier scoping, state, rendering, gate capture, GRN logic, CSV
+index.html   Login screen, role-based shell, four views, departure & return modals, notifications
+styles.css   Light operations theme, responsive layout, red DHL accent, return cards & bin splits
+app.js       Auth/RBAC, carrier scoping, state, gate departure & arrival, GRN logic, CSV export
 assets/      Recreated DHL Supply Chain logo and favicon (SVG)
 ```
 

@@ -1321,6 +1321,18 @@ p {
   color: var(--amber);
 }
 
+.status-pill--transit {
+  border-color: #b2ddff;
+  background: #eff8ff;
+  color: #175cd3;
+}
+
+.status-pill--completed {
+  border-color: var(--green-line);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
 .status-dot {
   width: 6px;
   height: 6px;
@@ -1330,6 +1342,21 @@ p {
 
 .status-pill--waiting .status-dot {
   background: #f79009;
+}
+
+.status-pill--transit .status-dot {
+  background: #2e90fa;
+}
+
+.status-pill--completed .status-dot {
+  background: #12b76a;
+}
+
+.field--readonly .input {
+  background: #f9fafb;
+  color: #475467;
+  cursor: not-allowed;
+  border-color: var(--line);
 }
 
 .vehicle-dest {
@@ -1431,6 +1458,93 @@ p {
 .vehicle-id {
   color: var(--faint);
   font-size: 11px;
+}
+
+/* Bin breakdown & Return card styles */
+.bin-split {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fcfcfd;
+}
+
+.bin-split > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bin-split span {
+  font-size: 10px;
+  color: var(--faint);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.bin-split strong {
+  font-size: 13.5px;
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+.bin-split--modal {
+  margin-bottom: 16px;
+  background: #f8fafc;
+  border-color: var(--line-strong);
+  padding: 12px 14px;
+  gap: 12px;
+}
+
+.bin-split-box small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bin-split-box--expected strong {
+  color: #b54708;
+}
+
+.return-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.return-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.06);
+}
+
+.return-note {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  margin-top: 14px;
+  line-height: 1.45;
+}
+
+.return-note--ok {
+  background: var(--green-soft);
+  border: 1px solid var(--green-line);
+  color: var(--green);
+}
+
+.return-note--warn {
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  color: var(--amber);
 }
 
 /* Dispatch rail */
@@ -1820,6 +1934,29 @@ p {
   gap: 7px;
 }
 
+.route-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.route-copy strong {
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.route-copy small {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.km-cell {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+}
+
 .invoice-cell {
   color: #475467;
   font-family: var(--mono);
@@ -1834,6 +1971,23 @@ p {
   font-size: 11.5px;
   font-weight: 600;
   text-align: right;
+}
+
+.bins-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bins-cell strong {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.bins-cell small {
+  font-size: 9.5px;
+  color: var(--muted);
+  text-transform: uppercase;
 }
 
 .table-foot {
@@ -1967,6 +2121,10 @@ p {
 
 .activity-item--grn .activity-dot {
   background: #12b76a;
+}
+
+.activity-item--return .activity-dot {
+  background: #027a48;
 }
 
 .activity-body {

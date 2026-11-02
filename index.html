@@ -162,6 +162,17 @@
           <span class="nav-badge" id="navGateBadge" hidden>0</span>
         </button>
 
+        <button class="nav-item" type="button" data-view="returns">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11" />
+            </svg>
+          </span>
+          <span class="nav-text">Truck Arrival &amp; Returns</span>
+          <span class="nav-badge" id="navReturnsBadge" hidden>0</span>
+        </button>
+
         <button class="nav-item" type="button" data-view="admin">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -436,6 +447,70 @@
           </div>
         </section>
 
+        <!-- ============================== RETURNS & ARRIVAL ============================== -->
+        <section class="view" id="view-returns" aria-labelledby="returnsTitle" aria-hidden="true">
+          <div class="page-head">
+            <div class="page-head-copy">
+              <span class="eyebrow">Gate-in &amp; return verification</span>
+              <h1 id="returnsTitle">Truck arrival &amp; empty bins</h1>
+              <p class="page-lede">
+                Verify trucks arriving back at Musashi Gate 02. Confirm the returned bins (e.g. empty or rejected bins),
+                record actual kilometres for variable routes, and complete the trip.
+              </p>
+            </div>
+            <div class="page-aside">
+              <div class="stat-tile">
+                <span>In transit</span>
+                <strong id="returnsInTransitCount">0</strong>
+                <small>trucks on route</small>
+              </div>
+              <div class="stat-tile">
+                <span>Verified today</span>
+                <strong id="returnsTodayCount">0</strong>
+                <small>completed returns</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="dispatch-layout">
+            <div class="dispatch-main">
+              <div class="section-head">
+                <div>
+                  <h2>Trucks in transit</h2>
+                  <p>Vehicles dispatched to customers awaiting return gate-in.</p>
+                </div>
+                <span class="count-pill" id="returnsCountLabel">0 trips</span>
+              </div>
+
+              <div class="waiting-grid" id="returnsGrid" aria-live="polite"></div>
+            </div>
+
+            <aside class="dispatch-rail">
+              <section class="panel" aria-labelledby="recentReturnsTitle">
+                <div class="panel-head">
+                  <div>
+                    <h2 id="recentReturnsTitle">Recent arrivals</h2>
+                    <p>Verified returned trucks.</p>
+                  </div>
+                  <span class="count-pill" id="returnsRecentCount">0 verified</span>
+                </div>
+                <div class="recent-list" id="returnsRecentList"></div>
+              </section>
+
+              <section class="panel rule-panel" aria-labelledby="returnRuleTitle">
+                <h2 id="returnRuleTitle">100% Bin &amp; Route Audit</h2>
+                <div class="formula" aria-hidden="true">
+                  <span>LOADED</span><b>−</b><span>DELIVERED</span><b>=</b><span>RETURN</span>
+                </div>
+                <p>
+                  Every bin dispatched is tracked. If extra or non-customer bins were loaded, they return with the truck.
+                  Even if zero bins return, the truck arrives for final gate-in verification.
+                </p>
+              </section>
+            </aside>
+          </div>
+        </section>
+
         <!-- =============================== ADMIN =============================== -->
         <section class="view" id="view-admin" aria-labelledby="adminTitle" aria-hidden="true">
           <div class="page-head">
@@ -472,27 +547,27 @@
             </article>
 
             <article class="metric-card">
-              <span class="metric-label">Bins transported</span>
+              <span class="metric-label">Bins delivered</span>
               <strong class="metric-value" id="metricBins">0</strong>
-              <span class="metric-foot">Across all customers</span>
+              <span class="metric-foot">Customer parts received</span>
+            </article>
+
+            <article class="metric-card">
+              <span class="metric-label">Trucks in transit</span>
+              <strong class="metric-value" id="metricTransit">0</strong>
+              <span class="metric-foot">Awaiting return gate-in</span>
             </article>
 
             <article class="metric-card">
               <span class="metric-label">Active at gate</span>
               <strong class="metric-value" id="metricActive">0</strong>
-              <span class="metric-foot">Awaiting gate verification</span>
+              <span class="metric-foot">Awaiting departure</span>
             </article>
 
             <article class="metric-card">
               <span class="metric-label">Avg. bins / trip</span>
               <strong class="metric-value" id="metricAvgBins">0</strong>
               <span class="metric-foot">Load efficiency</span>
-            </article>
-
-            <article class="metric-card">
-              <span class="metric-label">Dispatched today</span>
-              <strong class="metric-value" id="metricToday">0</strong>
-              <span class="metric-foot">Trips closed today</span>
             </article>
 
             <article class="metric-card">
@@ -545,12 +620,16 @@
                     <th scope="col">Trip</th>
                     <th scope="col">Transporter</th>
                     <th scope="col">Vehicle no.</th>
-                    <th scope="col">Driver</th>
-                    <th scope="col">Destination</th>
+                    <th scope="col">Driver &amp; DL</th>
+                    <th scope="col">Destination &amp; City</th>
+                    <th scope="col" class="num">Distance</th>
                     <th scope="col">Invoice no.</th>
-                    <th scope="col" class="num">Bins</th>
+                    <th scope="col" class="num">Loaded</th>
+                    <th scope="col" class="num">Delivered</th>
+                    <th scope="col" class="num">Returned</th>
                     <th scope="col">GRN number</th>
-                    <th scope="col">Completed</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Verified / Closed</th>
                   </tr>
                 </thead>
                 <tbody id="completedBody"></tbody>
@@ -645,6 +724,36 @@
             <small class="field-error" aria-live="polite"></small>
           </label>
 
+          <label class="field" for="dispatchLocation">
+            <span>Customer location</span>
+            <input
+              class="input"
+              id="dispatchLocation"
+              name="dispatchLocation"
+              type="text"
+              placeholder="e.g. Gurgaon, Haryana"
+              readonly
+            />
+            <small class="field-hint">Destination city / plant location.</small>
+          </label>
+
+          <label class="field" for="dispatchKm">
+            <span>Total kilometres <em id="dispatchKmRequired">*</em></span>
+            <input
+              class="input mono"
+              id="dispatchKm"
+              name="dispatchKm"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="5000"
+              step="1"
+              placeholder="e.g. 90"
+            />
+            <small class="field-hint" id="dispatchKmHint">Fixed route (90 km) or enter actual km (Gujarat).</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
           <label class="field" for="dispatchDriverId">
             <span>Driver DL / ID <em>*</em></span>
             <input
@@ -661,25 +770,7 @@
             <small class="field-error" aria-live="polite"></small>
           </label>
 
-          <label class="field" for="binsLoaded">
-            <span>Total bins loaded <em>*</em></span>
-            <input
-              class="input mono"
-              id="binsLoaded"
-              name="binsLoaded"
-              type="number"
-              inputmode="numeric"
-              min="1"
-              max="2000"
-              step="1"
-              placeholder="e.g. 240"
-              required
-            />
-            <small class="field-hint">Counted against the bin-out slip.</small>
-            <small class="field-error" aria-live="polite"></small>
-          </label>
-
-          <label class="field field--full" for="invoiceNo">
+          <label class="field" for="invoiceNo">
             <span>External tax invoice no. <em>*</em></span>
             <input
               class="input mono"
@@ -694,6 +785,55 @@
             <small class="field-hint">From Musashi's tax-invoice system.</small>
             <small class="field-error" aria-live="polite"></small>
           </label>
+
+          <label class="field" for="binsLoaded">
+            <span>Total bins loaded <em>*</em></span>
+            <input
+              class="input mono"
+              id="binsLoaded"
+              name="binsLoaded"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="2000"
+              step="1"
+              placeholder="e.g. 100"
+              required
+            />
+            <small class="field-hint">Total bins physically placed in the truck.</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
+          <label class="field" for="binsDelivered">
+            <span>Bins for customer <em>*</em></span>
+            <input
+              class="input mono"
+              id="binsDelivered"
+              name="binsDelivered"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              max="2000"
+              step="1"
+              placeholder="e.g. 80"
+              required
+            />
+            <small class="field-hint">Bins delivered &amp; accepted by customer.</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
+          <label class="field field--full" for="binsReturned">
+            <span>Returning bins (not part of customer order)</span>
+            <input
+              class="input mono"
+              id="binsReturned"
+              name="binsReturned"
+              type="number"
+              placeholder="Auto-calculated (e.g. 20)"
+              readonly
+            />
+            <small class="field-hint" id="binSplitHint">Returned bins = Total loaded − Customer delivered.</small>
+          </label>
         </div>
 
         <div class="form-note">
@@ -703,8 +843,8 @@
             </svg>
           </span>
           <p>
-            Generating the GRN is final: the trip moves to the admin ledger and the transporter's
-            sequence advances permanently.
+            Generating the GRN dispatches the truck to the customer. When the vehicle returns to Musashi,
+            final verification and bin audit are completed in the <strong>Truck Arrival &amp; Returns</strong> workspace.
           </p>
         </div>
 
@@ -712,6 +852,143 @@
           <button class="btn btn-ghost" type="button" id="cancelDispatchBtn">Cancel</button>
           <button class="btn btn-primary" type="submit">
             Generate GRN &amp; dispatch
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m5 12.5 4.5 4.5L19 7" />
+            </svg>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================== RETURN MODAL ============================== -->
+  <div class="modal-backdrop" id="returnModal" hidden>
+    <div class="modal modal--return" role="dialog" aria-modal="true" aria-labelledby="returnModalTitle" aria-describedby="returnModalDesc">
+      <button class="icon-btn modal-close" type="button" id="returnModalClose" aria-label="Close return dialog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+
+      <div class="modal-head">
+        <span class="eyebrow">Gate-in verification</span>
+        <h2 id="returnModalTitle">Verify truck arrival &amp; bins</h2>
+        <p id="returnModalDesc">Inspect returning bins and finalize trip completion for carrier billing.</p>
+      </div>
+
+      <div class="modal-summary">
+        <div class="summary-cell">
+          <span>Vehicle / driver</span>
+          <strong id="returnVehicle">—</strong>
+        </div>
+        <div class="summary-cell">
+          <span>Transporter</span>
+          <strong id="returnTransporter">—</strong>
+        </div>
+        <div class="summary-cell">
+          <span>Route &amp; Customer</span>
+          <strong id="returnRoute">—</strong>
+        </div>
+        <div class="summary-cell summary-cell--grn">
+          <span>GRN issued</span>
+          <strong class="mono" id="returnGrn">—</strong>
+          <small>Dispatched load</small>
+        </div>
+      </div>
+
+      <form id="returnForm" class="modal-form" novalidate autocomplete="off">
+        <input type="hidden" id="returnDispatchId" value="" />
+
+        <!-- Bin summary cards -->
+        <div class="bin-split bin-split--modal">
+          <div class="bin-split-box">
+            <span>Total loaded</span>
+            <strong id="returnLoaded">0</strong>
+            <small>Dispatched from plant</small>
+          </div>
+          <div class="bin-split-box">
+            <span>Delivered</span>
+            <strong id="returnDelivered">0</strong>
+            <small>Customer bins</small>
+          </div>
+          <div class="bin-split-box bin-split-box--expected">
+            <span>Expected back</span>
+            <strong id="returnExpected">0</strong>
+            <small>Returning with truck</small>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <label class="field" for="returnKm" id="returnKmWrap">
+            <span>Trip distance (km) <em id="returnKmRequired">*</em></span>
+            <input
+              class="input mono"
+              id="returnKm"
+              name="returnKm"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="5000"
+              step="1"
+              placeholder="e.g. 895"
+            />
+            <small class="field-hint" id="returnKmHint">Record actual kilometres for non-fixed routes (Gujarat / ad-hoc).</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
+          <label class="field" for="returnBins">
+            <span>Actual bins returned <em>*</em></span>
+            <input
+              class="input mono"
+              id="returnBins"
+              name="returnBins"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              max="2000"
+              step="1"
+              placeholder="e.g. 20 (enter 0 if empty)"
+              required
+            />
+            <small class="field-hint">Physical count of bins returned with the truck.</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
+          <label class="field field--full" for="returnCondition">
+            <span>Returned bin condition <em>*</em></span>
+            <div class="select-wrap">
+              <select class="input select" id="returnCondition" name="returnCondition" required>
+                <option value="Empty">Empty bins (ready for washing / reuse)</option>
+                <option value="Contains material">Contains material (rejected / returned parts)</option>
+                <option value="No bins returned">No bins returned (0 bins)</option>
+              </select>
+            </div>
+            <small class="field-hint">Quality verification at Gate 02.</small>
+            <small class="field-error" aria-live="polite"></small>
+          </label>
+
+          <label class="field field--full" for="returnNotes">
+            <span>Remarks / return notes</span>
+            <input
+              class="input"
+              id="returnNotes"
+              name="returnNotes"
+              type="text"
+              maxlength="120"
+              placeholder="e.g. 20 empty bins received in good condition"
+              autocomplete="off"
+            />
+            <small class="field-hint">Optional remarks for reconciliation audit.</small>
+          </label>
+        </div>
+
+        <!-- Mismatch warning or confirmation note -->
+        <div id="returnMismatch" class="return-note" hidden></div>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" id="cancelReturnBtn">Cancel</button>
+          <button class="btn btn-primary" type="submit">
+            Complete trip &amp; verify arrival
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="m5 12.5 4.5 4.5L19 7" />
             </svg>
